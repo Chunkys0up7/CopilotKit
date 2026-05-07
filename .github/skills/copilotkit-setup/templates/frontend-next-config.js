@@ -9,16 +9,11 @@ require("dotenv").config({
 const nextConfig = {
   reactStrictMode: true,
 
-  // CopilotKit packages ship as ESM with subpath exports (including CSS).
-  // Next 14 needs them in transpilePackages to bundle CSS reliably and to
-  // process their TypeScript output without raw-imports failing.
-  transpilePackages: [
-    "@copilotkit/react-core",
-    "@copilotkit/react-ui",
-    "@copilotkit/runtime",
-    "@copilotkit/runtime-client-gql",
-    "@copilotkit/shared",
-  ],
+  // Minimal transpilePackages — only the two client-rendered packages that
+  // ship subpath CSS exports. Including @copilotkit/runtime here breaks
+  // chunking (it's used server-side in the API route and Next can't
+  // re-bundle its pre-built CJS); same for runtime-client-gql / shared.
+  transpilePackages: ["@copilotkit/react-core", "@copilotkit/react-ui"],
 
   experimental: {
     serverActions: { bodySizeLimit: "2mb" },
