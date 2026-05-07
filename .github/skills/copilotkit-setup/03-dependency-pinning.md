@@ -18,14 +18,57 @@ ERROR: Could not find a version that satisfies the requirement copilotkit==0.1.4
 
 **Cause:** Versions **0.1.40 through 0.1.87** of `copilotkit` actively block Python 3.13. Versions ≤0.1.39 and ≥0.1.88 work.
 
-**Fix:** Use `copilotkit>=0.1.88,<0.2`. Don't pin an exact version unless you've verified it against your Python.
+**Fix.** Pick a range that matches your Python:
 
-Add a comment in `requirements.txt` so future-you knows why:
+| Your Python | Pin |
+|---|---|
+| 3.13 | `copilotkit>=0.1.88,<0.2` |
+| 3.10 / 3.11 / 3.12 | `copilotkit>=0.1.74,<0.2` (verified working — see next entry) |
+| Mirror restricts you to a specific old version | Use that version exactly + apply the transitive-dep cap below. |
 
 ```txt
 # 0.1.40–0.1.87 pinned Python <3.13. 0.1.88+ supports 3.13 again.
-copilotkit>=0.1.88,<0.2
+# Both 0.1.74 (3.10–3.12) and 0.1.88+ (3.13) are tested working.
+copilotkit>=0.1.74,<0.2
 ```
+
+---
+
+## Python — `copilotkit==0.1.74` blows up on import
+
+**Symptom (Python 3.10–3.12, pip install succeeds, then any import fails):**
+
+```
+File ".../copilotkit/__init__.py", line 8, in <module>
+    from .langgraph_agui_agent import LangGraphAGUIAgent
+File ".../ag_ui_langgraph/middlewares/state_streaming.py", line 7, in <module>
+    from langchain.agents.middleware import AgentMiddleware, ModelRequest
+ImportError: cannot import name 'ExecutionInfo' from 'langgraph.runtime'
+```
+
+**Cause.** `copilotkit 0.1.74` has very loose declared deps (`langchain` and `langgraph` with no upper bounds). pip happily resolves to `langchain>=1` and `langgraph>=1`, but the 0.1.74-era code path needs the **<1.x** versions.
+
+**Fix.** Cap them in `requirements.txt`:
+
+```txt
+copilotkit>=0.1.74,<0.2
+langchain<2          # <-- transitive dep cap — only matters for 0.1.74 era
+langgraph<2          # <-- same
+```
+
+**Why `<2` and not `<1`?** Because `copilotkit 0.1.88+` _wants_ `langchain>=1`, and we want one `requirements.txt` that works for both. `<2` keeps both sides happy: pip picks `<1` when 0.1.74 is selected (because 0.1.74 doesn't satisfy a `langchain>=1` requirement), and picks `1.x` when 0.1.88 is selected.
+
+**Verified versions for 0.1.74 (Python 3.11):**
+```
+copilotkit       0.1.74
+ag-ui-langgraph  0.0.26
+langchain        0.3.30
+langgraph        0.6.11
+pydantic         2.13.4
+fastapi          0.115.x
+```
+
+`pytest tests/ evals/ -q` → 18 passed. `/copilotkit_remote/info` returns sdkVersion=0.1.74 with the action set intact.
 
 ---
 

@@ -1,7 +1,8 @@
 # =============================================================================
-# Python backend dependencies — verified compatible (May 2026, Python 3.13).
-# Compatible ranges, not exact pins; lockfile = `pip freeze > requirements.lock`
-# for production reproducibility.
+# Python backend dependencies.
+# Versions use compatible ranges so the dependency tree stays solvable
+# across copilotkit's own (changing) constraints. For a fully-locked
+# production deploy, generate a lockfile via `pip freeze > requirements.lock`.
 # =============================================================================
 
 # --- Web framework ----------------------------------------------------------
@@ -10,12 +11,22 @@ uvicorn[standard]>=0.32,<1
 python-multipart>=0.0.20,<1
 
 # --- CopilotKit runtime -----------------------------------------------------
-# 0.1.40–0.1.87 pinned Python <3.13. 0.1.88+ supports 3.13 again.
-copilotkit>=0.1.88,<0.2
+# Tested working: 0.1.74 (Python 3.10–3.12) and 0.1.88+ (Python 3.13).
+# Versions 0.1.40–0.1.87 declare Python <3.13 only.
+copilotkit>=0.1.74,<0.2
+
+# --- LangChain / LangGraph (transitive deps of copilotkit) ------------------
+# copilotkit 0.1.74's loose pins let pip pull a 1.x langchain that breaks
+# with `cannot import name 'ExecutionInfo' from 'langgraph.runtime'`.
+# Capping at <1 keeps 0.1.74 importable without changing 0.1.88 behavior
+# (0.1.88 already requires langchain>=1 and won't see this constraint).
+langchain<2
+langgraph<2
 
 # --- Config / typing --------------------------------------------------------
-# copilotkit 0.1.88 needs pydantic-core>=2.35, which ships with pydantic 2.11+
-pydantic>=2.11,<3
+# copilotkit 0.1.88 needs pydantic-core>=2.35 (pydantic 2.11+).
+# 0.1.74 is happy with pydantic 2.10+. Range covers both.
+pydantic>=2.10,<3
 pydantic-settings>=2.7,<3
 python-dotenv>=1,<2
 
