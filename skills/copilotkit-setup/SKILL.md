@@ -133,39 +133,76 @@ These are **the actual files that ship in the kickstarter** — copying one into
 
 ## Quick bootstrap (zero-to-running)
 
-For a new project, this is the fastest verified path:
+The skill ships a complete project in [`bootstrap/`](./bootstrap/) and two scripts that copy it into a target directory. **No GitHub access required** — everything lives on your machine after the skill is installed.
 
-```bash
-# 1. Layout
-mkdir myapp && cd myapp
-git init
-mkdir backend frontend docs scripts
-cp <skill>/templates/env-example .env.example
-cp .env.example .env
+### Windows (PowerShell)
+```powershell
+# 1. Scaffold
+$target = "C:\path\to\my-new-app"
+pwsh "$HOME\.claude\skills\copilotkit-setup\bootstrap.ps1" -Target $target
+Set-Location $target
 
-# 2. Backend
-cd backend
-python -m venv .venv && . .venv/Scripts/activate    # macOS/Linux: . .venv/bin/activate
-cp <skill>/templates/requirements.txt .
+# 2. Backend (Terminal 1)
+Set-Location backend
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-# Copy LLM/action/runtime/eval templates into app/, evals/
-uvicorn app.main:app --reload --port 8000  # → http://localhost:8000/health
+uvicorn app.main:app --reload --port 8000
 
-# 3. Frontend
-cd ../frontend
-npx copilotkit@latest init --next-app-router .   # OR copy templates/frontend-* manually
+# 3. Frontend (Terminal 2)
+Set-Location $target\frontend
 npm install
-# Copy templates/frontend-runtime-route.ts → app/api/copilotkit/route.ts
-# Copy templates/frontend-copilot-provider.tsx → components/CopilotProvider.tsx
-npm run dev                                       # → http://localhost:3000
+npm run dev
 
-# 4. Smoke test
-curl http://localhost:8000/health
-curl -I http://localhost:3000
-pytest backend/tests backend/evals
+# 4. Open http://localhost:3000
 ```
 
-Total time on a clean machine: **~10 minutes** including npm install. See the per-step references for the gotchas.
+### macOS / Linux
+```bash
+target=~/projects/my-new-app
+bash "$HOME/.claude/skills/copilotkit-setup/bootstrap.sh" "$target"
+cd "$target"
+
+# Backend (Terminal 1)
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+
+# Frontend (Terminal 2)
+cd "$target/frontend"
+npm install
+npm run dev
+```
+
+**What you get.** A 78-file project with:
+- A working LangGraph CoAgent (`/agent/default`) that uses our `LLMProvider`.
+- An action registry exposing `echo` + `get_weather` example actions.
+- 17/17 unit tests passing (the 18th is `test_health` — needs the venv installed).
+- Spec docs for every class.
+- A working dev runner script.
+
+**Total time on a clean machine.** ~5 minutes plus `npm install` (~3 min).
+
+### What if I don't have the skill installed?
+
+Then you can't bootstrap from this skill — but the bundled `bootstrap/` directory IS the entire project layout. If anyone on your team has it (or has a working copy of the kickstarter project), copy `skills/copilotkit-setup/bootstrap/*` into your new directory and start from RUNBOOK.md Step 2. See `RUNBOOK.md` "Appendix: Installing the skill" for full options.
+
+### Templates (for piecewise adoption)
+
+Direct copy-paste files for adding capabilities to an existing app live in [`templates/`](./templates/). Use these when you don't want a full kickstarter — just a single piece (an `LLMProvider`, an `ActionRegistry`, etc.):
+
+- `templates/backend-llm-base.py` — the `LLMProvider` ABC.
+- `templates/backend-mock-provider.py` — deterministic mock.
+- `templates/backend-action-base.py` — `Action` + `ActionResult`.
+- `templates/backend-action-registry.py` — the registry.
+- `templates/backend-runtime-mount.py` — FastAPI wiring.
+- `templates/backend-default-agent.py` — minimal LangGraph CoAgent.
+- `templates/frontend-runtime-route.ts` — Next route with adapter selection.
+- `templates/frontend-copilot-provider.tsx` — React `<CopilotProvider>`.
+- `templates/eval-framework.py` — scenario runner.
+- `templates/eval-scenario-template.yaml` — YAML scenario shape.
+- `templates/env-example` — full `.env.example`.
 
 ---
 
