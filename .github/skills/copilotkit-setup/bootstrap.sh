@@ -6,11 +6,14 @@
 # layout from the skill's bundled `bootstrap/` directory into <target>.
 #
 # Usage:
-#   ./bootstrap.sh <target>
-#   ./bootstrap.sh ./my-app --force
-#   ./bootstrap.sh ../new-project --no-git
+#   bash bootstrap.sh <target>
+#   bash bootstrap.sh ./my-app --force
+#   bash bootstrap.sh ../new-project --no-git
 #
-# After this completes, follow RUNBOOK.md from Step 4 (backend deps).
+# Container / Codespaces example:
+#   bash .github/skills/copilotkit-setup/bootstrap.sh /workspace/my-app
+#
+# After this completes, follow RUNBOOK.md from Step 3 (backend deps).
 # =============================================================================
 
 set -euo pipefail
@@ -35,22 +38,27 @@ while [[ $# -gt 0 ]]; do
     --force) force=true; shift ;;
     --no-git) no_git=true; shift ;;
     -h|--help) usage ;;
-    -*) echo "Unknown flag: $1"; usage ;;
+    -*) echo "Unknown flag: $1" >&2; usage ;;
     *) target="$1"; shift ;;
   esac
 done
 
 [[ -z "$target" ]] && usage
 
-# Resolve absolute paths
+# Resolve absolute paths. Works from any CWD; works wherever the skill lives —
+# .github/skills/, ~/.claude/skills/, or any other location.
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 src_dir="$script_dir/bootstrap"
 
-[[ ! -d "$src_dir" ]] && { echo "ERROR: bootstrap source not found at $src_dir"; exit 1; }
+[[ ! -d "$src_dir" ]] && {
+  echo "ERROR: bootstrap source not found at $src_dir" >&2
+  echo "Re-install the skill — see RUNBOOK.md 'Appendix: Installing the skill'." >&2
+  exit 1
+}
 
 if [[ -d "$target" ]] && [[ -n "$(ls -A "$target" 2>/dev/null)" ]]; then
   if [[ "$force" != true ]]; then
-    echo "ERROR: $target is not empty. Use --force or pick an empty dir."
+    echo "ERROR: $target is not empty. Use --force or pick an empty dir." >&2
     exit 1
   fi
 fi
@@ -63,7 +71,8 @@ echo "    source: $src_dir"
 echo "    target: $target"
 echo
 
-# cp -a preserves attributes; the dot copies hidden files (.env.example, .gitignore)
+# `cp -a` preserves attributes; the trailing `/.` copies hidden files
+# (.env.example, .gitignore) without dotglob shenanigans.
 cp -a "$src_dir"/. "$target"/
 
 # Initialize git unless told otherwise
@@ -90,14 +99,14 @@ echo "==> Done. $count files written."
 echo
 echo "Next steps:"
 echo "  cd '$target'"
-echo "  # Backend (Terminal 1):"
+echo
+echo "  # Backend (terminal 1):"
 echo "  cd backend"
-echo "  python -m venv .venv"
-echo "  source .venv/bin/activate"
+echo "  python -m venv .venv && source .venv/bin/activate"
 echo "  pip install -r requirements.txt"
 echo "  uvicorn app.main:app --reload --port 8000"
 echo
-echo "  # Frontend (Terminal 2):"
+echo "  # Frontend (terminal 2):"
 echo "  cd frontend"
 echo "  npm install"
 echo "  npm run dev"

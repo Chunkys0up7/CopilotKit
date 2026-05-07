@@ -133,34 +133,18 @@ These are **the actual files that ship in the kickstarter** — copying one into
 
 ## Quick bootstrap (zero-to-running)
 
-The skill ships a complete project in [`bootstrap/`](./bootstrap/) and two scripts that copy it into a target directory. **No GitHub access required** — everything lives on your machine after the skill is installed.
+The skill ships a complete project in [`bootstrap/`](./bootstrap/) and a script that copies it into a target directory. **No GitHub access required** — everything lives on disk after the skill is installed.
 
-### Windows (PowerShell)
-```powershell
-# 1. Scaffold
-$target = "C:\path\to\my-new-app"
-pwsh "$HOME\.claude\skills\copilotkit-setup\bootstrap.ps1" -Target $target
-Set-Location $target
+The skill works from any of these locations (the script auto-detects its install dir):
+- `.github/skills/copilotkit-setup/` (project-relative, recommended for teams)
+- `~/.claude/skills/copilotkit-setup/` (user-wide, one machine many projects)
+- Anywhere else you copy it to.
 
-# 2. Backend (Terminal 1)
-Set-Location backend
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+### bash (Linux container / Codespaces / macOS / WSL)
 
-# 3. Frontend (Terminal 2)
-Set-Location $target\frontend
-npm install
-npm run dev
-
-# 4. Open http://localhost:3000
-```
-
-### macOS / Linux
 ```bash
-target=~/projects/my-new-app
-bash "$HOME/.claude/skills/copilotkit-setup/bootstrap.sh" "$target"
+target=/workspace/my-new-app
+bash .github/skills/copilotkit-setup/bootstrap.sh "$target"
 cd "$target"
 
 # Backend (Terminal 1)
@@ -173,6 +157,17 @@ uvicorn app.main:app --reload --port 8000
 cd "$target/frontend"
 npm install
 npm run dev
+
+# Open http://localhost:3000
+```
+
+### PowerShell (Windows)
+
+```powershell
+$target = "C:\workspace\my-new-app"
+pwsh .github\skills\copilotkit-setup\bootstrap.ps1 -Target $target
+Set-Location $target
+# (then the same backend/frontend commands as bash, with .\.venv\Scripts\Activate.ps1)
 ```
 
 **What you get.** A 78-file project with:
@@ -186,7 +181,7 @@ npm run dev
 
 ### What if I don't have the skill installed?
 
-Then you can't bootstrap from this skill — but the bundled `bootstrap/` directory IS the entire project layout. If anyone on your team has it (or has a working copy of the kickstarter project), copy `skills/copilotkit-setup/bootstrap/*` into your new directory and start from RUNBOOK.md Step 2. See `RUNBOOK.md` "Appendix: Installing the skill" for full options.
+The bundled `bootstrap/` directory IS the entire project layout. If anyone on your team has it (or has a working copy of the kickstarter project), copy `.github/skills/copilotkit-setup/bootstrap/*` into your new directory and start from RUNBOOK.md Step 3. See `RUNBOOK.md` "Appendix: Installing the skill" for full options.
 
 ### Templates (for piecewise adoption)
 

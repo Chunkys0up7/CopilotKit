@@ -25,35 +25,46 @@ This repository is a *kickstarter*: it gives you a clean, extensively documented
 
 > For numbered, step-by-step instructions (with validation at each step and recovery procedures), see [`RUNBOOK.md`](RUNBOOK.md). The summary below is for "I've done this before — just remind me of the commands."
 
-**Prerequisites:** Python 3.11+, Node 20+, pnpm or npm.
+**Prerequisites:** Python 3.11+, Node 20+, bash (Linux container / Codespaces / macOS / WSL).
+
+### Scaffold a fresh project (no GitHub access needed)
 
 ```bash
-# 1. Backend
-cd backend
-python -m venv .venv
-. .venv/Scripts/activate          # PowerShell:  .venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-cp ../.env.example ../.env        # then edit keys (optional — mock works out of the box)
-uvicorn app.main:app --reload --port 8000
-
-# 2. Frontend (in a new terminal)
-cd frontend
-npm install
-npm run dev                       # http://localhost:3000
-
-# 3. Evals
-cd backend
-pytest evals/                     # or: python -m evals.runner
+target=/workspace/my-new-app
+bash .github/skills/copilotkit-setup/bootstrap.sh "$target"
+cd "$target"
 ```
 
-Open <http://localhost:3000>. The page loads and the sidebar opens with the **mock** provider. To get an actual model response, set:
+### Then in two terminals
+
+```bash
+# Backend
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+
+# Frontend
+cd frontend
+npm install
+npm run dev          # http://localhost:3000
+```
+
+### Evals
+
+```bash
+cd backend
+pytest evals/        # or: python -m evals.runner
+```
+
+Open <http://localhost:3000>. The page loads with the **mock** provider; chat returns `[mock] <message>`. To wire a real model:
 
 ```dotenv
 LLM_PROVIDER=openai
 OPENAI_API_KEY=sk-...
 ```
 
-…in your `.env` and restart `npm run dev`. (Anthropic works the same way: `LLM_PROVIDER=anthropic` + `ANTHROPIC_API_KEY`.)
+…in `.env` and restart both servers. (Anthropic works the same way: `LLM_PROVIDER=anthropic` + `ANTHROPIC_API_KEY`.)
 
 ---
 
@@ -66,8 +77,9 @@ OPENAI_API_KEY=sk-...
 ├── ARCHITECTURE.md                <- system design, request flow, sequence diagrams
 ├── CHANGELOG.md
 ├── .env.example                   <- all env vars documented
-├── skills/
-│   └── copilotkit-setup/          <- portable skill: playbook + drop-in templates
+├── .github/
+│   └── skills/
+│       └── copilotkit-setup/      <- portable skill: playbook + bootstrap + templates
 ├── docs/
 │   ├── classes/                   <- one spec doc per class (see docs/classes/INDEX.md)
 │   ├── ui-capabilities.md         <- every prebuilt UI component & its props
