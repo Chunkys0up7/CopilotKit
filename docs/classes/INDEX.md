@@ -19,7 +19,8 @@ Each spec follows the same template:
 | `Action` | [backend/app/actions/base.py](../../backend/app/actions/base.py) | [Action.md](Action.md) |
 | `ActionRegistry` | [backend/app/actions/registry.py](../../backend/app/actions/registry.py) | [ActionRegistry.md](ActionRegistry.md) |
 | `ExampleActions` (BE) | [backend/app/actions/examples.py](../../backend/app/actions/examples.py) | [ExampleActions.md](ExampleActions.md) |
-| `DemoAgent` | [backend/app/agents/demo_agent.py](../../backend/app/agents/demo_agent.py) | [DemoAgent.md](DemoAgent.md) |
+| `DefaultAgent` | [backend/app/agents/default_agent.py](../../backend/app/agents/default_agent.py) | [DefaultAgent.md](DefaultAgent.md) |
+| `DemoAgent` (placeholder) | [backend/app/agents/demo_agent.py](../../backend/app/agents/demo_agent.py) | [DemoAgent.md](DemoAgent.md) |
 | `Runtime (FastAPI)` | [backend/app/runtime.py](../../backend/app/runtime.py) | [Runtime.md](Runtime.md) |
 | `EvalRunner` | [backend/evals/framework.py](../../backend/evals/framework.py) | [EvalRunner.md](EvalRunner.md) |
 | `RootLayout` | [frontend/app/layout.tsx](../../frontend/app/layout.tsx) | [RootLayout.md](RootLayout.md) |

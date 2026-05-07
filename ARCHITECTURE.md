@@ -7,43 +7,35 @@
 │  Browser                                                   │
 │  ┌──────────────────────────────────────────────────────┐  │
 │  │  Next.js page                                        │  │
-│  │  ┌────────────────────┐    ┌──────────────────────┐  │  │
-│  │  │ <CopilotProvider>  │───▶│ <CopilotSidebar />   │  │  │
-│  │  │  - useCopilotAction│    │ <CopilotChat />      │  │  │
-│  │  │  - useCopilotReadable                          │  │  │
-│  │  └─────────┬──────────┘    └──────────────────────┘  │  │
-│  └────────────┼─────────────────────────────────────────┘  │
-│               │ HTTP/SSE (AG-UI protocol)                  │
-│               ▼                                            │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  /api/copilotkit  (Next.js route)                    │  │
-│  │  - CopilotRuntime                                    │  │
-│  │  - service adapter ──► LLM call (OpenAI/Anthropic)   │  │
-│  │  - remoteEndpoints ──► Python backend (actions)      │  │
-│  └────────────┬─────────────────────────────────────────┘  │
-└───────────────┼────────────────────────────────────────────┘
-                │ HTTP
-                ▼
+│  │  ┌────────────────────┐                              │  │
+│  │  │ <CopilotProvider>  │                              │  │
+│  │  │  runtimeUrl=/api/copilotkit                       │  │
+│  │  │  agents__unsafe_dev_only={ default: HttpAgent }   │  │
+│  │  └────────┬─────────┬─┘                              │  │
+│  └───────────┼─────────┼────────────────────────────────┘  │
+└──────────────┼─────────┼───────────────────────────────────┘
+   chat (AG-UI)│         │actions (HTTP)
+               │         │
+               ▼         ▼
 ┌────────────────────────────────────────────────────────────┐
 │  FastAPI (Python)                                          │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  /copilotkit_remote   (CopilotKitRemoteEndpoint)     │  │
-│  │  - hosts server-side actions                         │  │
-│  │  - (future) hosts LangGraph CoAgents                 │  │
-│  └────────────┬─────────────────────────────────────────┘  │
-│               │                                            │
-│               ▼                                            │
-│       ┌──────────────────┐                                 │
-│       │  ActionRegistry  │  ← echo, get_weather, …         │
-│       └──────────────────┘                                 │
 │                                                            │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  LLMProvider ABC  ← used by evals + future CoAgents  │  │
-│  ├──────────────────────────────────────────────────────┤  │
-│  │  MockProvider      ← default, deterministic          │  │
-│  │  OpenAIProvider    ← needs OPENAI_API_KEY            │  │
-│  │  AnthropicProvider ← needs ANTHROPIC_API_KEY         │  │
-│  └──────────────────────────────────────────────────────┘  │
+│  /agent/default          /copilotkit_remote                │
+│  ag_ui_langgraph         CopilotKitRemoteEndpoint          │
+│  endpoint                  - actions = [echo, weather…]    │
+│    │                       - agents = []  (bypassed)       │
+│    ▼                                                       │
+│  CompiledStateGraph                                        │
+│    chat_node ──► get_provider().generate(messages)         │
+│                  │                                         │
+│                  ▼                                         │
+│       ┌──────────────────────┐                             │
+│       │  LLMProvider (ABC)   │ ← LLM_PROVIDER env switch   │
+│       ├──────────────────────┤                             │
+│       │  MockProvider        │  default, no network        │
+│       │  OpenAIProvider      │  needs OPENAI_API_KEY       │
+│       │  AnthropicProvider   │  needs ANTHROPIC_API_KEY    │
+│       └──────────────────────┘                             │
 └────────────────────────────────────────────────────────────┘
 ```
 
@@ -51,21 +43,31 @@
 
 | Path | Where the LLM is called |
 |---|---|
-| Standard chat (no `agent` prop) | **Next route**, via the service adapter selected by `LLM_PROVIDER`. |
-| CoAgent mode (`agent="…"` prop set) | **Python backend**, inside the LangGraph agent (uses `LLMProvider`). |
+| Chat (this kickstarter) | **Python**, inside the `default` LangGraph CoAgent's `chat_node`. Uses `LLMProvider`. |
 | Evals (`pytest`, `python -m evals.runner`) | **Python**, via the same `LLMProvider`. |
+| Future custom agents | **Python**, drop a new `LangGraph` into `app/agents/`, mount via `add_langgraph_fastapi_endpoint`, register `HttpAgent` on the React side. |
 
-This kickstarter ships **standard chat only**. The Python `LLMProvider` is wired for evals today and ready for a real CoAgent tomorrow — drop a compiled LangGraph into `app/agents/`, pass it as `agents=[...]` in `app/runtime.py`, set `agent="<name>"` on the React provider, and the LLM call moves to Python.
+The Next route's service adapter (`OpenAIAdapter` / `AnthropicAdapter` / `ExperimentalEmptyAdapter`) is configured but **not on the chat path** in this setup — chat is fully Python-side. The service adapter remains for non-agent flows that CopilotKit's runtime might use (suggestions, etc.).
 
-## Request flow (standard chat message)
+## Request flow (chat message)
 
-1. User types a message in `<CopilotSidebar />`.
-2. `@copilotkit/react-core` POSTs to `/api/copilotkit` with the conversation, registered client actions, and any `useCopilotReadable` context.
-3. The Next route's `CopilotRuntime` calls the Python backend at `/copilotkit_remote` to fetch its action schemas and merges them with client actions.
-4. The selected service adapter (`OpenAIAdapter`, `AnthropicAdapter`, or `ExperimentalEmptyAdapter`) calls the LLM with the merged tool set.
-5. If the LLM calls a *server* action, `CopilotRuntime` proxies the call to the Python backend; `ActionRegistry.dispatch()` runs the handler.
-6. If the LLM calls a *client* action, the runtime relays the call to the browser; `useCopilotAction`'s handler runs there.
-7. Tokens stream back to the chat UI as SSE.
+1. User types in `<CopilotSidebar />`.
+2. `@copilotkit/react-core` looks up `useAgent("default")` → finds the `HttpAgent` registered via `agents__unsafe_dev_only`.
+3. The `HttpAgent` POSTs the AG-UI request body to `<BACKEND>/agent/default`.
+4. `ag_ui_langgraph` runs the compiled graph: `START → chat_node → END`.
+5. `chat_node` calls `get_provider().generate(messages)` — this is the LLM call.
+6. The provider's response streams back as SSE events to the browser.
+7. If the LLM emitted a tool call for a server-side action, the React runtime relays it via `/api/copilotkit` → `/copilotkit_remote`, dispatched by `ActionRegistry`.
+8. Client actions registered via `useCopilotAction` run in the browser the same way.
+
+## Why two endpoints on the Python side?
+
+The `copilotkit` Python SDK 0.1.88 ships `LangGraphAGUIAgent`, intended to fold a LangGraph agent into the standard `/copilotkit_remote` flow. It's broken in two ways (see `docs/classes/Runtime.md` and the debugging runbook). Until that's fixed upstream:
+
+- Actions go through `CopilotKitRemoteEndpoint` (working).
+- Agents go through `ag_ui_langgraph.add_langgraph_fastapi_endpoint` directly (working).
+
+The React side bridges them: `runtimeUrl` for actions, `agents__unsafe_dev_only` for agents.
 
 ## Design principles
 

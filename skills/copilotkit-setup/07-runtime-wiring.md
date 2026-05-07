@@ -66,19 +66,24 @@ For deterministic chat without API keys, write a custom `MockServiceAdapter` (se
 
 ## File 2 — FastAPI `app/runtime.py`
 
-The job: build a `CopilotKitRemoteEndpoint` that exposes our `ActionRegistry` and (later) any LangGraph CoAgents, then mount it.
+Two endpoints, both mounted here:
+
+1. **`/copilotkit_remote`** — `CopilotKitRemoteEndpoint` carrying our `ActionRegistry`. Server-side actions live here. `agents=[]` because the SDK's `LangGraphAGUIAgent` bridge is broken in 0.1.88 (see `09-debugging-runbook.md`).
+2. **`/agent/default`** — direct AG-UI LangGraph endpoint via `ag_ui_langgraph.add_langgraph_fastapi_endpoint`. The chat agent lives here.
 
 ```python
 def mount(app: FastAPI, *, registry: ActionRegistry | None = None) -> None:
     registry = registry or default_registry()
-    provider = get_provider()  # used by evals + CoAgents, not chat
+    provider = get_provider()  # used by evals + the agent's chat_node
     log.info("copilotkit.runtime.mount",
              provider=provider.name, model=provider.model, actions=registry.names())
 
-    # Lazy import — keeps the SDK truly optional for unit tests.
+    # Lazy imports keep the SDKs truly optional for unit tests.
     from copilotkit import CopilotKitRemoteEndpoint
     from copilotkit.integrations.fastapi import add_fastapi_endpoint
+    from ag_ui_langgraph import LangGraphAgent, add_langgraph_fastapi_endpoint
 
+    # 1. Actions endpoint
     sdk_actions = [
         _action_to_copilotkit(a)
         for a in (registry.get(n) for n in registry.names())
@@ -86,15 +91,29 @@ def mount(app: FastAPI, *, registry: ActionRegistry | None = None) -> None:
     ]
     endpoint = CopilotKitRemoteEndpoint(actions=sdk_actions, agents=[])
     add_fastapi_endpoint(app, endpoint, "/copilotkit_remote")
-    log.info("copilotkit.runtime.mounted", path="/copilotkit_remote")
+
+    # 2. Agent endpoint (bypasses broken copilotkit.LangGraphAGUIAgent)
+    agent = LangGraphAgent(
+        name="default",
+        graph=build_default_graph(),  # your CompiledStateGraph
+        description="...",
+    )
+    add_langgraph_fastapi_endpoint(app, agent, "/agent/default")
 
 
-def _action_to_copilotkit(action: Action) -> dict:
+def _action_to_copilotkit(action: Action):
+    """Wrap our Action in copilotkit.Action (typed instances ≥ 0.1.88)."""
+    from copilotkit import Action as CKAction
     schema = action.copilotkit_schema()
     async def _handler(**kwargs):
         result = await action.call(kwargs)
         return result.value if result.ok else {"error": result.error}
-    return {**schema, "handler": _handler}
+    return CKAction(
+        name=schema["name"],
+        description=schema["description"],
+        parameters=schema.get("parameters", []),
+        handler=_handler,
+    )
 ```
 
 Mounted from `app/main.py`:
@@ -103,11 +122,15 @@ Mounted from `app/main.py`:
 runtime.mount(app)  # last line of main.py
 ```
 
-### Why `agents=[]`?
+### Why two endpoints?
 
-We don't ship a real LangGraph CoAgent in v0. Passing metadata-only dicts (`{"name": "demo", "description": "..."}`) without a real agent caused the `useAgent: Agent X not found` error on the React side. Empty list is the safe default.
+The `copilotkit` Python SDK 0.1.88 has two unfixed bugs in `LangGraphAGUIAgent`:
+1. `dict_repr()` calls `super().dict_repr()` on a parent without that method → `/info` 500.
+2. `execute()` is required by the SDK's flow but isn't implemented → `/agent/<name>` 500.
 
-When you build a real CoAgent, pass `agents=[LangGraphAgent(...)]` and add `agent="<name>"` to the React provider.
+Until those are fixed upstream, mounting `ag_ui_langgraph` directly is the cleanest path — you get a working agent endpoint, you keep a working actions endpoint, and the React side bridges them via `runtimeUrl` + `agents__unsafe_dev_only`.
+
+When the SDK is fixed, switch to the canonical pattern by passing `agents=[LangGraphAGUIAgent(...)]` to `CopilotKitRemoteEndpoint` and dropping the `ag_ui_langgraph` mount.
 
 ### Why lazy-import the SDK?
 
@@ -124,13 +147,29 @@ Two files cooperate:
 ```tsx
 "use client";
 import { CopilotKit } from "@copilotkit/react-core";
+import { HttpAgent } from "@ag-ui/client";
+import { useMemo, type ReactNode } from "react";
 
-export function CopilotProvider({ children }) {
-  return <CopilotKit runtimeUrl="/api/copilotkit">{children}</CopilotKit>;
+const RUNTIME_URL = "/api/copilotkit";
+const BACKEND_URL =
+  process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+
+export function CopilotProvider({ children }: { children: ReactNode }) {
+  const agents = useMemo(() => ({
+    default: new HttpAgent({ url: `${BACKEND_URL}/agent/default` }),
+  }), []);
+
+  return (
+    <CopilotKit runtimeUrl={RUNTIME_URL} agents__unsafe_dev_only={agents}>
+      {children}
+    </CopilotKit>
+  );
 }
 ```
 
-**No `agent` prop** for standard chat. Add it only when you have a real CoAgent.
+The `HttpAgent` registered via `agents__unsafe_dev_only` is what makes `useAgent("default")` resolve. It points at the Python `/agent/default` endpoint — chat goes there, actions still go through `runtimeUrl`.
+
+**`useMemo([])`** is required: re-creating `HttpAgent` every render resets connection state.
 
 ### `frontend/app/layout.tsx`
 

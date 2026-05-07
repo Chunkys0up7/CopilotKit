@@ -45,32 +45,85 @@ If you get past step 9, the wiring is correct. Failures at each step have specif
 
 ## Errors and fixes
 
-### `useAgent: Agent 'demo' not found after runtime sync`
+### `useAgent: Agent 'default' not found after runtime sync`
 
-**Cause:** The React provider has `agent="demo"` but no real agent is registered server-side. Passing metadata-only dicts (`{name: "demo", description: "..."}`) to `CopilotKitRemoteEndpoint(agents=...)` doesn't count — the SDK expects actual agent instances.
+**Symptom variants:**
+- `useAgent: Agent 'default' not found` (no `agent` prop on `<CopilotKit>`)
+- `useAgent: Agent '<your-name>' not found` (you set `agent="<your-name>"` but didn't register one)
 
-**Fix:** One of two paths:
+**Cause:** CopilotKit 1.57+ requires at least one agent registered. Even without an `agent` prop, `<CopilotChat>` / `<CopilotSidebar>` internally call `useAgent("default")`. The error fires when the agent isn't in either:
+- The runtime sync result (`/info` from your remote endpoint), OR
+- The `agents__unsafe_dev_only` prop on `<CopilotKit>`.
 
-1. **Drop CoAgent mode** (use standard chat):
+Passing metadata-only dicts (`{name, description}`) to `CopilotKitRemoteEndpoint(agents=...)` doesn't help — the SDK wants actual agent instances.
+
+**Fix (the kickstarter's path — mounted directly via ag_ui_langgraph):**
+
+The copilotkit Python SDK 0.1.88's `LangGraphAGUIAgent` bridge is broken (see next entry). Bypass it:
+
+1. Mount `ag_ui_langgraph`'s endpoint directly on the Python side:
+   ```python
+   # backend/app/runtime.py
+   from ag_ui_langgraph import LangGraphAgent, add_langgraph_fastapi_endpoint
+   from app.agents import build_default_graph
+
+   def mount(app):
+       # ... actions endpoint stays at /copilotkit_remote with agents=[]
+       agent = LangGraphAgent(
+           name="default",
+           graph=build_default_graph(),  # your CompiledStateGraph
+           description="...",
+       )
+       add_langgraph_fastapi_endpoint(app, agent, "/agent/default")
+   ```
+2. Register it on the React side via `agents__unsafe_dev_only`:
    ```tsx
    // frontend/components/CopilotProvider.tsx
-   <CopilotKit runtimeUrl="/api/copilotkit">  // no `agent` prop
-     {children}
-   </CopilotKit>
-   ```
-   And pass `agents=[]` server-side.
+   import { HttpAgent } from "@ag-ui/client";
 
-2. **Build a real LangGraph agent:**
-   ```python
-   from copilotkit import LangGraphAgent
-   from langgraph.graph import StateGraph
+   const agents = useMemo(() => ({
+     default: new HttpAgent({ url: "http://localhost:8000/agent/default" }),
+   }), []);
 
-   graph = StateGraph(MyState).compile()
-   demo_agent = LangGraphAgent(name="demo", description="...", graph=graph)
-   endpoint = CopilotKitRemoteEndpoint(actions=[...], agents=[demo_agent])
+   <CopilotKit
+     runtimeUrl="/api/copilotkit"
+     agents__unsafe_dev_only={agents}
+   >
    ```
 
-The kickstarter ships option 1 by default. See [`01-architecture-decisions.md`](./01-architecture-decisions.md).
+This satisfies `useAgent("default")` AND points it at a working endpoint. Chat now works end-to-end.
+
+**When the SDK bridge is fixed upstream**, you can switch back to the canonical pattern:
+```python
+endpoint = CopilotKitRemoteEndpoint(actions=[...], agents=[LangGraphAGUIAgent(...)])
+```
+…and remove `agents__unsafe_dev_only` from the React provider.
+
+---
+
+### `'super' object has no attribute 'dict_repr'` (copilotkit 0.1.88)
+
+**Symptom (POST `/copilotkit_remote/info` returns 500):**
+```
+File "copilotkit/langgraph_agui_agent.py", line 208, in dict_repr
+    super_repr = super().dict_repr()
+                 ^^^^^^^^^^^^^^^^^
+AttributeError: 'super' object has no attribute 'dict_repr'
+```
+
+**Cause:** `copilotkit.LangGraphAGUIAgent` inherits from `ag_ui_langgraph.LangGraphAgent`, which doesn't define `dict_repr`. The method is broken in 0.1.88.
+
+**Fix:** Don't use `LangGraphAGUIAgent` at all. See the previous entry's pattern (mount `ag_ui_langgraph` directly + register `HttpAgent` on the React side).
+
+---
+
+### `'_LangGraphAGUIAgentFixed' object has no attribute 'execute'`
+
+**Symptom (POST `/copilotkit_remote/agent/default` returns 500 even after fixing `dict_repr`):**
+
+**Cause:** The SDK's `execute_agent` flow calls `agent.execute(...)`. `copilotkit.Agent` declares this abstract; `LangGraphAGUIAgent` doesn't implement it (its parent has `run()` instead). Second bug in the 0.1.88 bridge.
+
+**Fix:** Same as above — bypass the bridge by mounting `ag_ui_langgraph.add_langgraph_fastapi_endpoint` directly.
 
 ---
 
