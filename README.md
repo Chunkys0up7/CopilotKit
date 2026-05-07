@@ -14,9 +14,9 @@ This repository is a *kickstarter*: it gives you a clean, extensively documented
 |---|---|---|
 | **Frontend** | Next.js 14 (App Router) + React 18 + TypeScript | Hosts the chat UI and registers client-side actions/readables |
 | **CopilotKit UI** | `@copilotkit/react-core`, `@copilotkit/react-ui` | Sidebar, chat, popup, textarea — all theme-able |
-| **Runtime bridge** | `@copilotkit/runtime` (Node, in `app/api/copilotkit/route.ts`) | Translates the AG-UI protocol from the frontend into HTTP calls to the Python backend |
-| **Backend** | FastAPI + `copilotkit` (PyPI) | Hosts agents, server-side actions, and the LLM dispatch layer |
-| **LLM layer** | Provider abstraction with placeholders | Mock / OpenAI / Anthropic adapters behind one interface — wire a real key in `.env` and you're live |
+| **Runtime route** | `@copilotkit/runtime` (Node, in `app/api/copilotkit/route.ts`) | Hosts the LLM service adapter (OpenAI/Anthropic/Empty) **and** forwards actions to the Python backend |
+| **Backend** | FastAPI + `copilotkit` (PyPI) | Hosts server-side actions; ready for a LangGraph CoAgent drop-in |
+| **LLM layer** | Symmetric: Next-side adapter + Python `LLMProvider` | One `LLM_PROVIDER` env var configures both. Used for chat (Next) and evals/CoAgents (Python). |
 | **Evals** | Native pytest-based scenario runner | Declarative YAML scenarios; deterministic via the mock provider |
 
 ---
@@ -44,7 +44,14 @@ cd backend
 pytest evals/                     # or: python -m evals.runner
 ```
 
-Open <http://localhost:3000>, click the chat sidebar, and say *"hi"* — you'll get a response from the **mock LLM provider** until you swap in a real one.
+Open <http://localhost:3000>. The page loads and the sidebar opens with the **mock** provider. To get an actual model response, set:
+
+```dotenv
+LLM_PROVIDER=openai
+OPENAI_API_KEY=sk-...
+```
+
+…in your `.env` and restart `npm run dev`. (Anthropic works the same way: `LLM_PROVIDER=anthropic` + `ANTHROPIC_API_KEY`.)
 
 ---
 

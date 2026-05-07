@@ -2,11 +2,19 @@
 CopilotKit runtime wiring.
 
 Builds a `CopilotKitRemoteEndpoint` populated with our `ActionRegistry`
-and `DemoAgent`, then mounts it onto the FastAPI app at `/copilotkit_remote`.
+and mounts it onto a FastAPI app at `/copilotkit_remote`.
 
 This module is the *only* place that imports from the `copilotkit` SDK —
 the rest of the backend stays SDK-agnostic so you could lift it to a
 different runtime (e.g. plain Server-Sent Events) without rewriting actions.
+
+What lives where:
+    - LLM call:    Next.js route handler via a service adapter (OpenAIAdapter
+                   etc.). See `frontend/app/api/copilotkit/route.ts`.
+    - Actions:     Here. The Python backend is the action server.
+    - CoAgents:    Future — drop a real LangGraph agent and pass it to
+                   `agents=` below. See `app/agents/demo_agent.py` for the
+                   placeholder shape.
 
 Spec: docs/classes/Runtime.md
 """
@@ -19,7 +27,6 @@ from fastapi import FastAPI
 
 from app.actions import ActionRegistry, default_registry
 from app.actions.base import Action
-from app.agents import build_demo_agent
 from app.llm import LLMProvider, get_provider
 from app.logging_config import get_logger
 
@@ -61,18 +68,18 @@ def mount(app: FastAPI, *, registry: ActionRegistry | None = None) -> None:
     from copilotkit import CopilotKitRemoteEndpoint  # type: ignore[import-untyped]
     from copilotkit.integrations.fastapi import add_fastapi_endpoint  # type: ignore[import-untyped]
 
-    sdk_actions = [_action_to_copilotkit(a) for a in (registry.get(n) for n in registry.names()) if a]
-    agent = build_demo_agent(provider)
+    sdk_actions = [
+        _action_to_copilotkit(a)
+        for a in (registry.get(n) for n in registry.names())
+        if a
+    ]
 
-    endpoint = CopilotKitRemoteEndpoint(
-        actions=sdk_actions,
-        agents=[
-            {
-                "name": agent.name,
-                "description": "Demo CoAgent — one-shot LLM call wrapped as an agent.",
-            }
-        ],
-    )
+    # `agents=[]` is intentional: we don't ship a real LangGraph CoAgent
+    # in v0. When you build one (see app/agents/demo_agent.py), pass an
+    # actual `LangGraphAgent` here and add `agent="<name>"` to the
+    # frontend `<CopilotKit>` provider to enter CoAgent mode.
+    endpoint = CopilotKitRemoteEndpoint(actions=sdk_actions, agents=[])
+
     add_fastapi_endpoint(app, endpoint, _REMOTE_PATH)
     log.info("copilotkit.runtime.mounted", path=_REMOTE_PATH)
 

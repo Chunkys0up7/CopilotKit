@@ -17,8 +17,9 @@
 │               ▼                                            │
 │  ┌──────────────────────────────────────────────────────┐  │
 │  │  /api/copilotkit  (Next.js route)                    │  │
-│  │  - @copilotkit/runtime                               │  │
-│  │  - Forwards to Python backend                        │  │
+│  │  - CopilotRuntime                                    │  │
+│  │  - service adapter ──► LLM call (OpenAI/Anthropic)   │  │
+│  │  - remoteEndpoints ──► Python backend (actions)      │  │
 │  └────────────┬─────────────────────────────────────────┘  │
 └───────────────┼────────────────────────────────────────────┘
                 │ HTTP
@@ -27,37 +28,44 @@
 │  FastAPI (Python)                                          │
 │  ┌──────────────────────────────────────────────────────┐  │
 │  │  /copilotkit_remote   (CopilotKitRemoteEndpoint)     │  │
+│  │  - hosts server-side actions                         │  │
+│  │  - (future) hosts LangGraph CoAgents                 │  │
 │  └────────────┬─────────────────────────────────────────┘  │
 │               │                                            │
-│       ┌───────┴────────┐                                   │
-│       ▼                ▼                                   │
-│  ┌──────────┐   ┌──────────────┐                           │
-│  │ Actions  │   │  CoAgents    │                           │
-│  │ Registry │   │ (LangGraph)  │                           │
-│  └────┬─────┘   └──────┬───────┘                           │
-│       │                │                                   │
-│       └────────┬───────┘                                   │
-│                ▼                                           │
-│       ┌───────────────────┐                                │
-│       │  LLMProvider ABC  │  ← swap via env (LLM_PROVIDER) │
-│       ├───────────────────┤                                │
-│       │ MockProvider      │  ← default, deterministic      │
-│       │ OpenAIProvider    │  ← needs OPENAI_API_KEY        │
-│       │ AnthropicProvider │  ← needs ANTHROPIC_API_KEY     │
-│       └───────────────────┘                                │
+│               ▼                                            │
+│       ┌──────────────────┐                                 │
+│       │  ActionRegistry  │  ← echo, get_weather, …         │
+│       └──────────────────┘                                 │
+│                                                            │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  LLMProvider ABC  ← used by evals + future CoAgents  │  │
+│  ├──────────────────────────────────────────────────────┤  │
+│  │  MockProvider      ← default, deterministic          │  │
+│  │  OpenAIProvider    ← needs OPENAI_API_KEY            │  │
+│  │  AnthropicProvider ← needs ANTHROPIC_API_KEY         │  │
+│  └──────────────────────────────────────────────────────┘  │
 └────────────────────────────────────────────────────────────┘
 ```
 
-## Request flow (chat message)
+## Where the LLM call happens
+
+| Path | Where the LLM is called |
+|---|---|
+| Standard chat (no `agent` prop) | **Next route**, via the service adapter selected by `LLM_PROVIDER`. |
+| CoAgent mode (`agent="…"` prop set) | **Python backend**, inside the LangGraph agent (uses `LLMProvider`). |
+| Evals (`pytest`, `python -m evals.runner`) | **Python**, via the same `LLMProvider`. |
+
+This kickstarter ships **standard chat only**. The Python `LLMProvider` is wired for evals today and ready for a real CoAgent tomorrow — drop a compiled LangGraph into `app/agents/`, pass it as `agents=[...]` in `app/runtime.py`, set `agent="<name>"` on the React provider, and the LLM call moves to Python.
+
+## Request flow (standard chat message)
 
 1. User types a message in `<CopilotSidebar />`.
-2. `@copilotkit/react-core` POSTs to `/api/copilotkit` with the conversation, the registered client actions, and any `useCopilotReadable` context.
-3. The Next.js route handler hands off to `@copilotkit/runtime`, which calls the Python backend over HTTP.
-4. `CopilotKitRemoteEndpoint` resolves the action set (server actions + agents).
-5. The configured `LLMProvider` is invoked; its streaming response (text + tool calls) is sent back as SSE.
-6. If the LLM calls a server action, `ActionRegistry.dispatch()` runs the handler and returns the result; the LLM may iterate.
-7. If the LLM calls a *client* action, the runtime relays the call to the browser; `useCopilotAction`'s handler runs there.
-8. Tokens stream back to the chat UI.
+2. `@copilotkit/react-core` POSTs to `/api/copilotkit` with the conversation, registered client actions, and any `useCopilotReadable` context.
+3. The Next route's `CopilotRuntime` calls the Python backend at `/copilotkit_remote` to fetch its action schemas and merges them with client actions.
+4. The selected service adapter (`OpenAIAdapter`, `AnthropicAdapter`, or `ExperimentalEmptyAdapter`) calls the LLM with the merged tool set.
+5. If the LLM calls a *server* action, `CopilotRuntime` proxies the call to the Python backend; `ActionRegistry.dispatch()` runs the handler.
+6. If the LLM calls a *client* action, the runtime relays the call to the browser; `useCopilotAction`'s handler runs there.
+7. Tokens stream back to the chat UI as SSE.
 
 ## Design principles
 
@@ -65,13 +73,14 @@
 |---|---|
 | **Single-purpose classes** | One file = one class = one job. `LLMProvider` only generates; `ActionRegistry` only dispatches. |
 | **Boundary-only validation** | Pydantic at the HTTP edge; trust internal calls. |
-| **Provider-agnostic** | Swap `LLM_PROVIDER=mock|openai|anthropic` and nothing else changes. |
+| **Provider-agnostic, both sides** | One `LLM_PROVIDER` env var maps to a Next-side adapter and a Python-side `LLMProvider`. Same `.env` drives both. |
 | **Spec-first** | Every class has a spec in `docs/classes/`. PRs that change a class update its spec. |
 | **Tests are part of the package** | `pytest` runs unit + eval scenarios in CI. |
 | **No premature abstraction** | New providers/actions are 1-file additions, not framework changes. |
 
 ## What's *intentionally* not here yet
 
+- A real LangGraph CoAgent (the `DemoAgent` is shaped for it but doesn't run as a CoAgent yet).
 - Persistent conversation storage (in-memory only — wire Redis or Postgres when you need it).
 - Auth (the runtime is unauthenticated by default — gate `/api/copilotkit` with your auth provider).
 - Multi-tenant isolation (single-process scaffold).
