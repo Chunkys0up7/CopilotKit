@@ -1,14 +1,18 @@
 # =============================================================================
 # Python backend dependencies.
 # Versions use compatible ranges so the dependency tree stays solvable
-# across copilotkit's own (changing) constraints. For a fully-locked
-# production deploy, generate a lockfile via `pip freeze > requirements.lock`.
+# across copilotkit's own (changing) constraints AND across other deps
+# in the same environment (e.g. internal corporate packages with their
+# own pins). For a fully-locked production deploy, generate a lockfile
+# via `pip freeze > requirements.lock`.
 # =============================================================================
 
 # --- Web framework ----------------------------------------------------------
-fastapi>=0.115,<1
-uvicorn[standard]>=0.32,<1
-python-multipart>=0.0.20,<1
+# Floors are deliberately old. Our code uses no fastapi feature newer than 0.95.
+# No upper bound — let the resolver pick whatever co-installed packages need.
+fastapi>=0.95
+uvicorn[standard]>=0.20
+python-multipart>=0.0.6
 
 # --- CopilotKit runtime -----------------------------------------------------
 # Tested working: 0.1.74 (Python 3.10–3.12) and 0.1.88+ (Python 3.13).
@@ -18,7 +22,7 @@ copilotkit>=0.1.74,<0.2
 # --- LangChain / LangGraph (transitive deps of copilotkit) ------------------
 # copilotkit 0.1.74's loose pins let pip pull a 1.x langchain that breaks
 # with `cannot import name 'ExecutionInfo' from 'langgraph.runtime'`.
-# Capping at <1 keeps 0.1.74 importable without changing 0.1.88 behavior
+# Capping at <2 keeps 0.1.74 importable without changing 0.1.88 behavior
 # (0.1.88 already requires langchain>=1 and won't see this constraint).
 langchain<2
 langgraph<2
@@ -27,23 +31,24 @@ langgraph<2
 # copilotkit 0.1.88 needs pydantic-core>=2.35 (pydantic 2.11+).
 # 0.1.74 is happy with pydantic 2.10+. Range covers both.
 pydantic>=2.10,<3
-pydantic-settings>=2.7,<3
-python-dotenv>=1,<2
+pydantic-settings>=2.5
+python-dotenv>=1
 
 # --- LLM SDKs (optional — only the one matching LLM_PROVIDER is used) -------
-openai>=1.59,<2
-anthropic>=0.42,<1
+openai>=1.30
+anthropic>=0.20
 
 # --- Logging ----------------------------------------------------------------
-structlog>=25,<26
+structlog>=23
 
 # --- Testing & evals --------------------------------------------------------
-pytest>=8.3,<9
-pytest-asyncio>=0.25,<1
-pytest-cov>=6,<7
-httpx>=0.28,<1
-pyyaml>=6,<7
+# httpx floor lowered for environments with older co-installed packages.
+pytest>=8
+pytest-asyncio>=0.24
+pytest-cov>=4
+httpx>=0.24
+pyyaml>=6
 
 # --- Dev tooling ------------------------------------------------------------
-ruff>=0.9,<1
-mypy>=1.14,<2
+ruff>=0.1
+mypy>=1
