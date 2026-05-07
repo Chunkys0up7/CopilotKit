@@ -23,6 +23,8 @@ This repository is a *kickstarter*: it gives you a clean, extensively documented
 
 ## Quickstart
 
+> For numbered, step-by-step instructions (with validation at each step and recovery procedures), see [`RUNBOOK.md`](RUNBOOK.md). The summary below is for "I've done this before — just remind me of the commands."
+
 **Prerequisites:** Python 3.11+, Node 20+, pnpm or npm.
 
 ```bash
@@ -60,8 +62,12 @@ OPENAI_API_KEY=sk-...
 ```
 .
 ├── README.md                      <- you are here
+├── RUNBOOK.md                     <- numbered, execute-in-order procedures
 ├── ARCHITECTURE.md                <- system design, request flow, sequence diagrams
+├── CHANGELOG.md
 ├── .env.example                   <- all env vars documented
+├── skills/
+│   └── copilotkit-setup/          <- portable skill: playbook + drop-in templates
 ├── docs/
 │   ├── classes/                   <- one spec doc per class (see docs/classes/INDEX.md)
 │   ├── ui-capabilities.md         <- every prebuilt UI component & its props
