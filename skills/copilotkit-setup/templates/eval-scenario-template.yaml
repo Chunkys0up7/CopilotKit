@@ -1,0 +1,34 @@
+# Template — copy and rename to evals/scenarios/NN_<name>.yaml
+#
+# All fields except `name` and `messages` are optional.
+
+name: example_scenario
+description: One-sentence summary that shows up in the test report.
+
+# Optional: force a specific provider for this scenario regardless of LLM_PROVIDER.
+# Use `mock` for action-pipeline tests in CI; omit to honor the env.
+# provider: mock
+
+messages:
+  - role: user
+    content: "What's the weather in London?"
+  # Multi-turn is fine — list the full conversation:
+  # - role: assistant
+  #   content: "Let me check..."
+  # - role: user
+  #   content: "Make it celsius."
+
+expect:
+  # Substring assertions — every entry must appear in response.content.
+  content_contains:
+    - "London"
+
+  # Regex assertion — single regex that must match response.content.
+  # content_matches: "^The weather in.*"
+
+  # Tool-call assertions — each entry must match at least one tool_call
+  # by `name`, with all arguments_contains keys matching.
+  tool_calls:
+    - name: get_weather
+      arguments_contains:
+        city: London

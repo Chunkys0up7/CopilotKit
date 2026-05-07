@@ -1,0 +1,38 @@
+# =============================================================================
+# Python backend dependencies — verified compatible (May 2026, Python 3.13).
+# Compatible ranges, not exact pins; lockfile = `pip freeze > requirements.lock`
+# for production reproducibility.
+# =============================================================================
+
+# --- Web framework ----------------------------------------------------------
+fastapi>=0.115,<1
+uvicorn[standard]>=0.32,<1
+python-multipart>=0.0.20,<1
+
+# --- CopilotKit runtime -----------------------------------------------------
+# 0.1.40–0.1.87 pinned Python <3.13. 0.1.88+ supports 3.13 again.
+copilotkit>=0.1.88,<0.2
+
+# --- Config / typing --------------------------------------------------------
+# copilotkit 0.1.88 needs pydantic-core>=2.35, which ships with pydantic 2.11+
+pydantic>=2.11,<3
+pydantic-settings>=2.7,<3
+python-dotenv>=1,<2
+
+# --- LLM SDKs (optional — only the one matching LLM_PROVIDER is used) -------
+openai>=1.59,<2
+anthropic>=0.42,<1
+
+# --- Logging ----------------------------------------------------------------
+structlog>=25,<26
+
+# --- Testing & evals --------------------------------------------------------
+pytest>=8.3,<9
+pytest-asyncio>=0.25,<1
+pytest-cov>=6,<7
+httpx>=0.28,<1
+pyyaml>=6,<7
+
+# --- Dev tooling ------------------------------------------------------------
+ruff>=0.9,<1
+mypy>=1.14,<2
