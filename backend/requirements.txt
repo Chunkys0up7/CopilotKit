@@ -1,0 +1,35 @@
+# =============================================================================
+# Python backend dependencies — pinned for reproducibility.
+# Source of truth: regenerate with `pip-compile pyproject.toml` if edited.
+# =============================================================================
+
+# --- Web framework ----------------------------------------------------------
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+python-multipart==0.0.20
+
+# --- CopilotKit runtime -----------------------------------------------------
+copilotkit==0.1.49
+
+# --- Config / typing --------------------------------------------------------
+pydantic==2.10.4
+pydantic-settings==2.7.0
+python-dotenv==1.0.1
+
+# --- LLM SDKs (optional — only the one matching LLM_PROVIDER is used) -------
+openai==1.59.6
+anthropic==0.42.0
+
+# --- Logging ----------------------------------------------------------------
+structlog==25.1.0
+
+# --- Testing & evals --------------------------------------------------------
+pytest==8.3.4
+pytest-asyncio==0.25.2
+pytest-cov==6.0.0
+httpx==0.28.1
+pyyaml==6.0.2
+
+# --- Dev tooling ------------------------------------------------------------
+ruff==0.9.0
+mypy==1.14.1
